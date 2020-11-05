@@ -9,8 +9,11 @@ import random
 from evaluation import evaluation
 from sq_entity_dataset import SQdataset
 from entity_detection import EntityDetection
+from entity_detection import TransformerModel
+import sys
 
-np.set_printoptions(threshold=np.nan)
+# np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 # Set default configuration in : args.py
 args = get_args()
 
@@ -22,12 +25,15 @@ torch.backends.cudnn.deterministic = True
 
 if not args.cuda:
     args.gpu = -1
+    device = torch.device('cpu')
 if torch.cuda.is_available() and args.cuda:
     print("Note: You are using GPU for training")
     torch.cuda.set_device(args.gpu)
     torch.cuda.manual_seed(args.seed)
+    device = torch.device('cuda')
 if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
+    device = torch.device('cpu')
 
 # Set up the data for training
 TEXT = data.Field(lower=True)
@@ -54,11 +60,11 @@ else:
 
 print("Embedding match number {} out of {}".format(match_embedding, len(TEXT.vocab)))
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=device, train=True, repeat=False,
                                    sort=False, shuffle=True, sort_within_batch=False)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
 
 config = args
@@ -66,14 +72,17 @@ config.words_num = len(TEXT.vocab)
 
 if args.dataset == 'EntityDetection':
     config.label = len(ED.vocab)
-    model = EntityDetection(config)
+    if config.entity_detection_mode.lower() == 'transformer':
+        model = TransformerModel(config)
+    else:
+        model = EntityDetection(config)
 else:
     print("Error Dataset")
     exit()
 
 model.embed.weight.data.copy_(TEXT.vocab.vectors)
 if args.cuda:
-    modle = model.to(torch.device("cuda:{}".format(args.gpu)))
+    model = model.to(torch.device("cuda:{}".format(args.gpu)))
     print("Shift model to GPU")
 
 print(config)
@@ -85,7 +94,10 @@ print("Entity Type", len(ED.vocab))
 print(model)
 
 parameter = filter(lambda p: p.requires_grad, model.parameters())
-optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
+if config.entity_detection_mode.lower() == 'transformer':
+    optimizer = torch.optim.Adam(parameter, lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
+else:
+    optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
 criterion = nn.NLLLoss()
 
 early_stop = False

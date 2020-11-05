@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 
 def get_args():
     parser = ArgumentParser(description="Relation Prediction")
-    parser.add_argument('--relation_prediction_mode', required=True, type=str, help='options are CNN, GRU, LSTM')
+    parser.add_argument('--relation_prediction_mode', required=True, type=str, help='options are CNN, GRU, LSTM, transformer')
     parser.add_argument('--no_cuda', action='store_false', help='do not use cuda', dest='cuda')
     parser.add_argument('--gpu', type=int, default=0) # Use -1 for CPU
     parser.add_argument('--epochs', type=int, default=30)
@@ -29,6 +29,12 @@ def get_args():
     parser.add_argument('--cnn_dropout', type=float, default=0.5, help='dropout before fully connected layer in CNN')
     parser.add_argument('--fix_embed', action='store_false', dest='train_embed')
     parser.add_argument('--hits', type=int, default=5)
+    # add for transformer
+    parser.add_argument('--nhead', type=int, default=6)
+    parser.add_argument('--num_encoder_layers', type=int, default=6)
+    parser.add_argument('--num_decoder_layers', type=int, default=6)
+    parser.add_argument('--dim_feedforward', type=int, default=2048)
+    parser.add_argument('--transformer_dropout', type=float, default=0.1)
     # added for testing
     parser.add_argument('--data_dir', type=str, default='../../data/processed_simplequestions_dataset/')
     parser.add_argument('--trained_model', type=str, default='')

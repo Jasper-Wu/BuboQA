@@ -170,8 +170,8 @@ if __name__=="__main__":
 
     ent_type = args.ent_type.lower()
     rel_type = args.rel_type.lower()
-    assert(ent_type == "crf" or ent_type == "lstm" or ent_type == "gru")
-    assert(rel_type == "lr" or rel_type == "cnn" or rel_type == "lstm" or rel_type == "gru")
+    assert(ent_type == "crf" or ent_type == "lstm" or ent_type == "gru" or ent_type == "transformer")
+    assert(rel_type == "lr" or rel_type == "cnn" or rel_type == "lstm" or rel_type == "gru" or rel_type == "transformer")
     output_dir = os.path.join(args.output_dir, "{}-{}".format(ent_type, rel_type))
     os.makedirs(output_dir, exist_ok=True)
 

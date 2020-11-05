@@ -137,7 +137,7 @@ if __name__=="__main__":
     print(args)
 
     model_type = args.model_type.lower()
-    assert(model_type == "crf" or model_type == "lstm" or model_type == "gru")
+    assert(model_type == "crf" or model_type == "lstm" or model_type == "gru" or model_type == "transformer")
     output_dir = os.path.join(args.output_dir, model_type)
     os.makedirs(output_dir, exist_ok=True)
 

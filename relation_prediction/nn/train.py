@@ -8,8 +8,11 @@ from args import get_args
 import random
 from sq_relation_dataset import SQdataset
 from relation_prediction import RelationPrediction
+from relation_prediction import TransformerModel
+import sys
 
-np.set_printoptions(threshold=np.nan)
+# np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 # Set default configuration in : args.py
 args = get_args()
 
@@ -21,16 +24,30 @@ torch.backends.cudnn.deterministic = True
 
 if not args.cuda:
     args.gpu = -1
+    device = torch.device('cpu')
 if torch.cuda.is_available() and args.cuda:
     print("Note: You are using GPU for training")
     torch.cuda.set_device(args.gpu)
     torch.cuda.manual_seed(args.seed)
+    device = torch.device('cuda')
 if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
+    device = torch.device('cpu')
 
 # Set up the data for training
-TEXT = data.Field(lower=True)
+with_tag = 'cls'
+fix_tag_embed = True
+if with_tag == 'cls':
+    cls_tag = '<cls>'
+    TEXT = data.Field(lower=True, init_token=cls_tag)
+elif with_tag == 'both':
+    cls_tag = '<cls>'
+    end_tag = '<eos>'
+    TEXT = data.Field(lower=True, init_token=cls_tag, eos_token=end_tag)
+else:
+    TEXT = data.Field(lower=True)
 RELATION = data.Field(sequential=False)
+print('tag mode: {}\tfix tag embedding: {}'.format(with_tag, fix_tag_embed))
 
 train, dev, test = SQdataset.splits(TEXT, RELATION, args.data_dir)
 TEXT.build_vocab(train, dev, test)
@@ -47,17 +64,25 @@ if os.path.isfile(args.vector_cache):
             match_embedding += 1
         else:
             TEXT.vocab.vectors[i] = torch.FloatTensor(dim).uniform_(-0.25, 0.25)
+    if with_tag == 'both' and fix_tag_embed == True:
+        cls_idx = TEXT.vocab.stoi[cls_tag]
+        end_idx = TEXT.vocab.stoi[end_tag]
+        TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
+        TEXT.vocab.vectors[end_idx] = -torch.ones(dim).float() / 10
+    elif with_tag == 'cls' and fix_tag_embed == True:
+        cls_idx = TEXT.vocab.stoi[cls_tag]
+        TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
 else:
     print("Error: Need word embedding pt file")
     exit(1)
 
 print("Embedding match number {} out of {}".format(match_embedding, len(TEXT.vocab)))
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=device, train=True, repeat=False,
                                    sort=False, shuffle=True, sort_within_batch=False)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
 
 config = args
@@ -65,7 +90,10 @@ config.words_num = len(TEXT.vocab)
 
 if args.dataset == 'RelationPrediction':
     config.rel_label = len(RELATION.vocab)
-    model = RelationPrediction(config)
+    if config.relation_prediction_mode.lower() == 'transformer':
+        model = TransformerModel(config)
+    else:
+        model = RelationPrediction(config)
 else:
     print("Error Dataset")
     exit()
@@ -84,7 +112,10 @@ print("Relation Type", len(RELATION.vocab))
 print(model)
 
 parameter = filter(lambda p: p.requires_grad, model.parameters())
-optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
+if config.relation_prediction_mode.lower() == 'transformer':
+    optimizer = torch.optim.Adam(parameter, lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
+else:
+    optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
 
 criterion = nn.NLLLoss()
 early_stop = False
