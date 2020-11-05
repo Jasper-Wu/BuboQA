@@ -9,9 +9,11 @@ from args import get_args
 import random
 from evaluation import evaluation
 from sq_entity_dataset import SQdataset
+import sys
 
 
-np.set_printoptions(threshold=np.nan)
+# np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 # Set default configuration in : args.py
 args = get_args()
 
@@ -22,12 +24,15 @@ random.seed(args.seed)
 
 if not args.cuda:
     args.gpu = -1
+    device = torch.device('cpu')
 if torch.cuda.is_available() and args.cuda:
     print("Note: You are using GPU for training")
     torch.cuda.set_device(args.gpu)
     torch.cuda.manual_seed(args.seed)
+    device = torch.device('cuda')
 if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
+    device = torch.device('cpu')
 
 TEXT = data.Field(lower=True)
 ED = data.Field()
@@ -36,11 +41,11 @@ train, dev, test = SQdataset.splits(TEXT, ED, path=args.data_dir)
 TEXT.build_vocab(train, dev, test)
 ED.build_vocab(train, dev, test)
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=device, train=True, repeat=False,
                                    sort=False, shuffle=True)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False)
 
 # load the model
@@ -62,6 +67,9 @@ if not os.path.exists(results_path):
 
 
 def convert(fileName, idFile, outputFile):
+    """
+    output the query text 
+    """
     fin = open(fileName)
     fid = open(idFile)
     fout = open(outputFile, "w")
@@ -69,14 +77,14 @@ def convert(fileName, idFile, outputFile):
     for line, line_id in tqdm(zip(fin.readlines(), fid.readlines())):
         query_list = []
         query_text = []
-        line = line.strip().split('\t')
-        sent = line[0].strip().split()
-        pred = line[1].strip().split()
+        line = line.strip().split('\t')  # question, label, gold
+        sent = line[0].strip().split()  # question
+        pred = line[1].strip().split()  # label 
         for token, label in zip(sent, pred):
             if label == 'I':
                 query_text.append(token)
             if label == 'O':
-                query_text = list(filter(lambda x: x != '<pad>', query_text))
+                query_text = list(filter(lambda x: x != '<pad>', query_text))  # delete the pad words
                 if len(query_text) != 0:
                     query_list.append(" ".join(list(filter(lambda x:x!='<pad>', query_text))))
                     query_text = []
@@ -85,7 +93,7 @@ def convert(fileName, idFile, outputFile):
             query_list.append(" ".join(list(filter(lambda x:x!='<pad>', query_text))))
             query_text = []
         if len(query_list) == 0:
-            query_list.append(" ".join(list(filter(lambda x:x!='<pad>',sent))))
+            query_list.append(" ".join(list(filter(lambda x:x!='<pad>',sent))))  # add the whole original question 
         fout.write(" %%%% ".join([line_id.strip()]+query_list)+"\n")
 
 
@@ -107,10 +115,10 @@ def predict(dataset_iter=test_iter, dataset=test, data_name="test"):
         if args.dataset == 'EntityDetection':
             n_correct += torch.sum(torch.sum(torch.max(scores, 1)[1].view(data_batch.ed.size()).data == data_batch.ed.data, dim=1) \
                               == data_batch.ed.size()[0]).item()
-            index_tag = np.transpose(torch.max(scores, 1)[1].view(data_batch.ed.size()).cpu().data.numpy())
+            index_tag = np.transpose(torch.max(scores, 1)[1].view(data_batch.ed.size()).cpu().data.numpy())  # shape: (batch_size, seq_len)
             tag_array = index2tag[index_tag]
             index_question = np.transpose(data_batch.text.cpu().data.numpy())
-            question_array = index2word[index_question]
+            question_array = index2word[index_question]  # questions in words 
             gold_list.append(np.transpose(data_batch.ed.cpu().data.numpy()))
             gold_array = index2tag[np.transpose(data_batch.ed.cpu().data.numpy())]
             pred_list.append(index_tag)
@@ -127,9 +135,12 @@ def predict(dataset_iter=test_iter, dataset=test, data_name="test"):
     else:
         print("Wrong dataset")
         exit()
-    results_file.flush()
+    results_file.flush()  # clear the internal buffer of the file 
     results_file.close()
     convert(temp_file, os.path.join(args.data_dir, "lineids_{}.txt".format(data_name)), os.path.join(results_path,"query.{}".format(data_name)))
+    # results_file is file handling, temp_file is file itself
+    # args.data_dir = ../../data/processed_simplequestions_dataset
+    # results_path = query_text
     os.remove(temp_file)
 
 

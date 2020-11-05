@@ -9,8 +9,11 @@ import random
 from evaluation import evaluation
 from sq_entity_dataset import SQdataset
 from entity_detection import EntityDetection
+from entity_detection import TransformerModel
+import sys
 
-np.set_printoptions(threshold=np.nan)
+# np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 # Set default configuration in : args.py
 args = get_args()
 
@@ -22,12 +25,15 @@ torch.backends.cudnn.deterministic = True
 
 if not args.cuda:
     args.gpu = -1
+    device = torch.device('cpu')
 if torch.cuda.is_available() and args.cuda:
     print("Note: You are using GPU for training")
     torch.cuda.set_device(args.gpu)
     torch.cuda.manual_seed(args.seed)
+    device = torch.device('cuda')
 if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
+    device = torch.device('cpu')
 
 # Set up the data for training
 TEXT = data.Field(lower=True)
@@ -54,11 +60,11 @@ else:
 
 print("Embedding match number {} out of {}".format(match_embedding, len(TEXT.vocab)))
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=device, train=True, repeat=False,
                                    sort=False, shuffle=True, sort_within_batch=False)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False, sort_within_batch=False)
 
 config = args
@@ -66,14 +72,17 @@ config.words_num = len(TEXT.vocab)
 
 if args.dataset == 'EntityDetection':
     config.label = len(ED.vocab)
-    model = EntityDetection(config)
+    if config.entity_detection_mode.lower() == 'transformer':
+        model = TransformerModel(config)
+    else:
+        model = EntityDetection(config)
 else:
     print("Error Dataset")
     exit()
 
 model.embed.weight.data.copy_(TEXT.vocab.vectors)
 if args.cuda:
-    modle = model.to(torch.device("cuda:{}".format(args.gpu)))
+    model = model.to(torch.device("cuda:{}".format(args.gpu)))
     print("Shift model to GPU")
 
 print(config)
@@ -85,7 +94,10 @@ print("Entity Type", len(ED.vocab))
 print(model)
 
 parameter = filter(lambda p: p.requires_grad, model.parameters())
-optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
+if config.entity_detection_mode.lower() == 'transformer':
+    optimizer = torch.optim.Adam(parameter, lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
+else:
+    optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay)
 criterion = nn.NLLLoss()
 
 early_stop = False
@@ -106,7 +118,7 @@ os.makedirs(save_path, exist_ok=True)
 print(header)
 
 if args.dataset == 'EntityDetection':
-    index2tag = np.array(ED.vocab.itos)
+    index2tag = np.array(ED.vocab.itos)  # ['<unk>', '<pad>', 'O', 'I', "'O',", "'O']", "['O',"]
 else:
     print("Wrong Dataset")
     exit(1)
@@ -124,11 +136,14 @@ while True:
         # Batch size : (Sentence Length, Batch_size)
         iterations += 1
         model.train(); optimizer.zero_grad()
-        scores = model(batch)
+        scores = model(batch)  # size: (seq_len * batch_size, label_num)
         # Entity Detection
         if args.dataset == 'EntityDetection':
             n_correct += torch.sum((torch.sum((torch.max(scores, 1)[1].view(batch.ed.size()).data == batch.ed.data), dim=0) \
-                      == batch.ed.size()[0])).item()
+                      == batch.ed.size()[0])).item()  # batch.ed.shape = (seq_len, batch_size)
+            # the first sum over dimension 0 is to calculate how many words are labeled corrected 
+            # if the whole sentence is correct, then the summation result should be equal to the length
+            # the second summation is to calculate how many sentences in this batch are correct
             loss = criterion(scores, batch.ed.view(-1, 1)[:, 0])
         else:
             print("Wrong Dataset")
@@ -156,14 +171,14 @@ while True:
                     n_dev_correct += ((torch.max(answer, 1)[1].view(dev_batch.ed.size()).data == dev_batch.ed.data).sum(dim=0) \
                                     == dev_batch.ed.size()[0]).sum()
                     index_tag = np.transpose(torch.max(answer, 1)[1].view(dev_batch.ed.size()).cpu().data.numpy())
-                    gold_list.append(np.transpose(dev_batch.ed.cpu().data.numpy()))
+                    gold_list.append(np.transpose(dev_batch.ed.cpu().data.numpy()))  # shape: (batch_size, seq_len)
                     pred_list.append(index_tag)
                 else:
                     print("Wrong Dataset")
                     exit()
 
             if args.dataset == 'EntityDetection':
-                P, R, F = evaluation(gold_list, pred_list, index2tag, type=False)
+                P, R, F = evaluation(gold_list, pred_list, index2tag, type=False)  # precision, recall, f1
                 print("{} Precision: {:10.6f}% Recall: {:10.6f}% F1 Score: {:10.6f}%".format("Dev", 100. * P, 100. * R,
                                                                                          100. * F))
             else:

@@ -5,9 +5,10 @@ from torchtext import data
 from args import get_args
 import random
 from sq_relation_dataset import SQdataset
+import sys
 
-
-np.set_printoptions(threshold=np.nan)
+# np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 # Set default configuration in : args.py
 args = get_args()
 
@@ -18,25 +19,38 @@ random.seed(args.seed)
 
 if not args.cuda:
     args.gpu = -1
+    device = torch.device('cpu')
 if torch.cuda.is_available() and args.cuda:
     print("Note: You are using GPU for training")
     torch.cuda.set_device(args.gpu)
     torch.cuda.manual_seed(args.seed)
+    device = torch.device('cuda')
 if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
+    device = torch.device('cpu')
 
-TEXT = data.Field(lower=True)
+with_tag = 'cls'
+# fix_tag_embed = True
+if with_tag == 'cls':
+    cls_tag = '<cls>'
+    TEXT = data.Field(lower=True, init_token=cls_tag)
+elif with_tag == 'both':
+    cls_tag = '<cls>'
+    end_tag = '<eos>'
+    TEXT = data.Field(lower=True, init_token=cls_tag, eos_token=end_tag)
+else:
+    TEXT = data.Field(lower=True)
 RELATION = data.Field(sequential=False)
 
 train, dev, test = SQdataset.splits(TEXT, RELATION, args.data_dir)
 TEXT.build_vocab(train, dev, test)
 RELATION.build_vocab(train, dev)
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=device, train=True, repeat=False,
                                    sort=False, shuffle=True)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=device, train=False, repeat=False,
                                    sort=False, shuffle=False)
 
 # load the model
@@ -52,7 +66,7 @@ else:
 
 index2word = np.array(TEXT.vocab.itos)
 
-results_path = os.path.join(args.results_path, args.relation_prediction_mode.lower())
+results_path = os.path.join(args.results_path, args.relation_prediction_mode.lower())  # results
 if not os.path.exists(results_path):
     os.makedirs(results_path, exist_ok=True)
 
@@ -67,10 +81,10 @@ def predict(dataset_iter=test_iter, dataset=test, data_name="test"):
     n_retrieved = 0
 
     fid = open(os.path.join(args.data_dir,"lineids_{}.txt".format(data_name)))
-    sent_id = [x.strip() for x in fid.readlines()]
+    sent_id = [x.strip() for x in fid.readlines()]  # Remove spaces at the beginning and at the end of the string
 
     for data_batch_idx, data_batch in enumerate(dataset_iter):
-        scores = model(data_batch)
+        scores = model(data_batch)  # shape: (batch_size, rel_label)
         if args.dataset == 'RelationPrediction':
             n_correct += torch.sum(torch.max(scores, 1)[1].view(data_batch.relation.size()).data == data_batch.relation.data).item()
             # Get top k

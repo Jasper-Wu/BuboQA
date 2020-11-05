@@ -1,7 +1,9 @@
+import math
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 class RelationPrediction(nn.Module):
     def __init__(self, config):
@@ -73,7 +75,7 @@ class RelationPrediction(nn.Module):
             # ct = (layer*direction, batch, hidden_dim)
             # outputs, (ht, ct) = self.lstm(x, (h0, c0))
             outputs, (ht, ct) = self.lstm(x)
-            tags = self.hidden2tag(ht[-2:].transpose(0, 1).contiguous().view(batch_size, -1))
+            tags = self.hidden2tag(ht[-2:].transpose(0, 1).contiguous().view(batch_size, -1))  # shape: (batch_size, direction*hidden_dim)
             scores = F.log_softmax(tags, dim=1)
             return scores
         elif self.config.relation_prediction_mode.upper() == "GRU":
@@ -104,5 +106,100 @@ class RelationPrediction(nn.Module):
             print("Unknown Mode")
             exit(1)
 
+class TransformerModel(nn.Module):
+    def __init__(self, config):
+        super(TransformerModel, self).__init__()
+        self.config = config
+        target_size = config.rel_label
+        self.d_model = config.words_dim
+        self.embed = nn.Embedding(config.words_num, self.d_model)
+        # self.src_embed = nn.Embedding(config.words_num, config.words_dim)
+        # self.tgt_embed = nn.Embedding()
+        if config.train_embed == False:
+            self.embed.weight.requires_grad = False
+        self.src_mask = None
+        self.pos_encoder = PositionalEncoding(self.d_model, config.transformer_dropout)
+        encoderlayer = TransformerEncoderLayer(self.d_model, config.nhead,
+                                               config.dim_feedforward, config.transformer_dropout)
+        encoder_norm = nn.LayerNorm(self.d_model)
 
+        self.concat = True
+        if self.concat == True:
+            self.transformer_encoder = TransformerEncoder(encoderlayer,
+                                                        config.num_encoder_layers - 1,
+                                                        encoder_norm)
+            self.last_encoder_layer = TransformerEncoder(encoderlayer, 1, encoder_norm)
+        else:
+            self.transformer_encoder = TransformerEncoder(encoderlayer,
+                                                        config.num_encoder_layers,
+                                                        encoder_norm)
+        
+        self.dropout = nn.Dropout(p=config.transformer_dropout)
+        self.relu = nn.ReLU()
+        d_model_linear = self.d_model * (1 + self.concat)
+        self.hidden2tag = nn.Sequential(
+            nn.Linear(d_model_linear, d_model_linear),
+            nn.BatchNorm1d(d_model_linear),
+            self.relu,
+            self.dropout,
+            nn.Linear(d_model_linear, target_size)
+        )
+        # self.decoder = nn.Linear(self.d_model, target_size)
+        self.init_weights()
+
+    def _generate_square_subsequent_mask(self, seq_len):
+        mask = (torch.triu(torch.ones(seq_len, seq_len)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    def forward(self, src):
+        src = src.text
+        if self.src_mask is None or self.src_mask.size(0) != src.size(0):
+            device = src.device
+            mask = self._generate_square_subsequent_mask(src.size(0)).to(device)
+            self.src_mask = mask
+        
+        src = self.embed(src) #* math.sqrt(self.d_model)
+        src = self.pos_encoder(src)
+        
+        if self.concat == True:
+            output1 = self.transformer_encoder(src)
+            output2 = self.last_encoder_layer(output1)
+            output = torch.cat([output1, output2], dim=-1)
+        else:
+            output = self.transformer_encoder(src) # not use src_mask
+        # output = self.decoder(output)
+
+        # output of shape (seq_len, batch_size, d_model)
+        # output = torch.mean(output, dim=0)
+        # output = torch.max(output, dim=0)[0]
+        output = output[0,:,:]
+        if output.size(0) != src.size(1):
+            raise RuntimeError("the result does not match the batch size")
+        output = self.hidden2tag(output)
+        scores = F.log_softmax(output, dim=1)
+        return scores
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0,1)
+        self.register_buffer('pe', pe)
+    
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        # attention the dimension
+        return self.dropout(x)
 
