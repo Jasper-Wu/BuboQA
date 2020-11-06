@@ -117,4 +117,8 @@ entity_linking/results/*
 evidence_integration/results/*
 
 entity_linking-old/*
-ntlk_data/*
+nltk_data/*
+._SimpleQuestions_v2
+.idea/
+.vscode/
+*.assets/
