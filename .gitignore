@@ -117,4 +117,4 @@ entity_linking/results/*
 evidence_integration/results/*
 
 entity_linking-old/*
-
+ntlk_data/*
