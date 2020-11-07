@@ -46,12 +46,17 @@ if args.relation_prediction_mode.lower() == 'transformer':
         cls_tag = '<cls>'
         end_tag = '<eos>'
         TEXT = data.Field(lower=True, init_token=cls_tag, eos_token=end_tag)
-    else:
+    elif args.with_tag == 'none':
         TEXT = data.Field(lower=True)
+    else:
+        print("Error: wrong tag mode")
+        exit(1)
+    print('tag mode: {}'.format(args.with_tag))
+    if args.with_tag != 'none':
+        print('fix tag embedding: {}'.format(args.fix_tag_embed))
 else:
     TEXT = data.Field(lower=True)
 RELATION = data.Field(sequential=False)
-print('tag mode: {}\tfix tag embedding: {}'.format(with_tag, fix_tag_embed))
 
 train, dev, test = SQdataset.splits(TEXT, RELATION, args.data_dir)
 TEXT.build_vocab(train, dev, test)
@@ -68,14 +73,15 @@ if os.path.isfile(args.vector_cache):
             match_embedding += 1
         else:
             TEXT.vocab.vectors[i] = torch.FloatTensor(dim).uniform_(-0.25, 0.25)
-    if args.with_tag == 'both' and args.fix_tag_embed == True:
-        cls_idx = TEXT.vocab.stoi[cls_tag]
-        end_idx = TEXT.vocab.stoi[end_tag]
-        TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
-        TEXT.vocab.vectors[end_idx] = -torch.ones(dim).float() / 10
-    elif args.with_tag == 'cls' and args.fix_tag_embed == True:
-        cls_idx = TEXT.vocab.stoi[cls_tag]
-        TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
+    if args.relation_prediction_mode.lower() == 'transformer':
+        if args.with_tag == 'both' and args.fix_tag_embed == True:
+            cls_idx = TEXT.vocab.stoi[cls_tag]
+            end_idx = TEXT.vocab.stoi[end_tag]
+            TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
+            TEXT.vocab.vectors[end_idx] = -torch.ones(dim).float() / 10
+        elif args.with_tag == 'cls' and args.fix_tag_embed == True:
+            cls_idx = TEXT.vocab.stoi[cls_tag]
+            TEXT.vocab.vectors[cls_idx] = torch.ones(dim).float() / 10
 else:
     print("Error: Need word embedding pt file")
     exit(1)

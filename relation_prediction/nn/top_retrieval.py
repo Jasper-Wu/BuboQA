@@ -29,15 +29,21 @@ if torch.cuda.is_available() and not args.cuda:
     print("Warning: You have Cuda but not use it. You are using CPU for training.")
     device = torch.device('cpu')
 
-with_tag = 'cls'
-# fix_tag_embed = True
-if with_tag == 'cls':
-    cls_tag = '<cls>'
-    TEXT = data.Field(lower=True, init_token=cls_tag)
-elif with_tag == 'both':
-    cls_tag = '<cls>'
-    end_tag = '<eos>'
-    TEXT = data.Field(lower=True, init_token=cls_tag, eos_token=end_tag)
+if args.relation_prediction_mode.lower() == "transformer":
+    # with_tag = 'cls'
+    # fix_tag_embed = True
+    if args.with_tag == 'cls':
+        cls_tag = '<cls>'
+        TEXT = data.Field(lower=True, init_token=cls_tag)
+    elif args.with_tag == 'both':
+        cls_tag = '<cls>'
+        end_tag = '<eos>'
+        TEXT = data.Field(lower=True, init_token=cls_tag, eos_token=end_tag)
+    elif args.with_tag == 'none':
+        TEXT = data.Field(lower=True)
+    else:
+        print("Error: wrong tag mode")
+        exit(1)
 else:
     TEXT = data.Field(lower=True)
 RELATION = data.Field(sequential=False)

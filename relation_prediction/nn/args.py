@@ -35,8 +35,9 @@ def get_args():
     parser.add_argument('--num_decoder_layers', type=int, default=6)
     parser.add_argument('--dim_feedforward', type=int, default=2048)
     parser.add_argument('--transformer_dropout', type=float, default=0.1)
-    parser.add_argument('--with_tag', type=str, default='none', help='cls or both, only when use transformer')
+    parser.add_argument('--with_tag', type=str, default='none', help='cls or both or none, only when use transformer')
     parser.add_argument('--fix_tag_embed', type=bool, default=True)
+    parser.add_argument('--with_concat', type=bool, default=False)
     # added for testing
     parser.add_argument('--data_dir', type=str, default='../../data/processed_simplequestions_dataset/')
     parser.add_argument('--trained_model', type=str, default='')

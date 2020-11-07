@@ -123,8 +123,7 @@ class TransformerModel(nn.Module):
                                                config.dim_feedforward, config.transformer_dropout)
         encoder_norm = nn.LayerNorm(self.d_model)
 
-        self.concat = True
-        if self.concat == True:
+        if config.with_concat == True and config.with_tag != 'none':
             self.transformer_encoder = TransformerEncoder(encoderlayer,
                                                         config.num_encoder_layers - 1,
                                                         encoder_norm)
@@ -136,7 +135,7 @@ class TransformerModel(nn.Module):
         
         self.dropout = nn.Dropout(p=config.transformer_dropout)
         self.relu = nn.ReLU()
-        d_model_linear = self.d_model * (1 + self.concat)
+        d_model_linear = self.d_model * (1 + config.with_concat)
         self.hidden2tag = nn.Sequential(
             nn.Linear(d_model_linear, d_model_linear),
             nn.BatchNorm1d(d_model_linear),
@@ -167,7 +166,7 @@ class TransformerModel(nn.Module):
         src = self.embed(src) #* math.sqrt(self.d_model)
         src = self.pos_encoder(src)
         
-        if self.concat == True:
+        if self.config.with_concat == True and self.config.with_tag != 'none':
             output1 = self.transformer_encoder(src)
             output2 = self.last_encoder_layer(output1)
             output = torch.cat([output1, output2], dim=-1)
@@ -176,9 +175,11 @@ class TransformerModel(nn.Module):
         # output = self.decoder(output)
 
         # output of shape (seq_len, batch_size, d_model)
-        # output = torch.mean(output, dim=0)
-        # output = torch.max(output, dim=0)[0]
-        output = output[0,:,:]
+        if self.config.with_tag == 'none':
+            output = torch.mean(output, dim=0)  # use mean instead of max
+            # output = torch.max(output, dim=0)[0]
+        else:
+            output = output[0,:,:]
         if output.size(0) != src.size(1):
             raise RuntimeError("the result does not match the batch size")
         output = self.hidden2tag(output)
