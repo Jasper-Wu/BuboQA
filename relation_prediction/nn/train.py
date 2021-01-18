@@ -17,10 +17,10 @@ np.set_printoptions(threshold=sys.maxsize)
 args = get_args()
 
 # Set random seed for reproducibility
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
-random.seed(args.seed)
-torch.backends.cudnn.deterministic = True
+# torch.manual_seed(args.seed)
+# np.random.seed(args.seed)
+# random.seed(args.seed)
+# torch.backends.cudnn.deterministic = True
 
 if not args.cuda:
     args.gpu = -1
