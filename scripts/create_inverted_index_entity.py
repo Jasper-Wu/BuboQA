@@ -11,7 +11,7 @@ def get_all_ngrams(tokens):
     max_n = min(len(tokens), 3)
     for n in range(1, max_n+1):
         ngrams = find_ngrams(tokens, n)
-        all_ngrams = all_ngrams | ngrams
+        all_ngrams = all_ngrams | ngrams    # union of sets 
     return all_ngrams
 
 def find_ngrams(input_list, n):

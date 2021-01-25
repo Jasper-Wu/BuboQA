@@ -7,11 +7,14 @@ import logging
 from fuzzywuzzy import process, fuzz
 import re
 from nltk.tokenize.treebank import TreebankWordTokenizer
-from util import www2fb, clean_uri, processed_text
+from scripts.util import www2fb, clean_uri, processed_text
 tokenizer = TreebankWordTokenizer()
 logger = logging.getLogger()
 logger.disabled = True
 
+'''
+augment the dataset with line-id, entity name in questions, entity labels in question
+'''
 
 def get_index(index_path):
     print("loading index from: {}".format(index_path))
@@ -36,6 +39,7 @@ def get_indices(src_list, pattern_list):
     for i in range(len(src_list)):
         match = 1
         for j in range(len(pattern_list)):
+            # compare pattern with src starting from i-th char in src_list
             if src_list[i+j] != pattern_list[j]:
                 match = 0
                 break
@@ -48,15 +52,20 @@ def get_indices(src_list, pattern_list):
 
 def get_ngram(tokens):
     ngram = []
-    for i in range(1, len(tokens)+1):
-        for s in range(len(tokens)-i+1):
-            ngram.append((" ".join(tokens[s: s+i]), s, i+s))
+    for i in range(1, len(tokens)+1):   # how many tokens in group
+        for s in range(len(tokens)-i+1):    # start position
+            ngram.append((" ".join(tokens[s: s+i]), s, i+s))    # start and end span
     return ngram
 
 
 def reverseLinking(sent, text_candidate):
+    '''
+    question: 
+    candidate entity name: entity name from name files
+    use candidate entity name to label the entities in question and give the corresponding text 
+    '''
     tokens = sent.split()
-    label = ["O"] * len(tokens)
+    label = ["O"] * len(tokens)     # label for each token in question 
     text_attention_indices = None
     exact_match = False
 
@@ -67,7 +76,7 @@ def reverseLinking(sent, text_candidate):
     for text in sorted(text_candidate, key=lambda x:len(x), reverse=True):
         pattern = r'(^|\s)(%s)($|\s)' % (re.escape(text))
         if re.search(pattern, sent):
-            text_attention_indices = get_indices(tokens, text.split())
+            text_attention_indices = get_indices(tokens, text.split())  # index range (for longest word??)
             break
     if text_attention_indices != None:
         exact_match = True

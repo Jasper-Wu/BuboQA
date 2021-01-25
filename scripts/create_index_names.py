@@ -6,6 +6,11 @@ import pickle
 
 from util import www2fb, clean_uri, processed_text
 
+'''
+from trimmed names file, create .pkl file
+{"entity": [literal/name, ]}
+'''
+
 def get_names_for_entities(namespath):
     print("getting names map...")
     names = {}

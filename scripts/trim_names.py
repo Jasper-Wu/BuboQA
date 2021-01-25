@@ -6,6 +6,11 @@ import pickle
 
 from util import www2fb, clean_uri, processed_text
 
+'''
+go through the names files and pick those appear in FB2M subset
+.txt
+"{}\t{}\t{}\n".format(entity, type, name)
+'''
 
 def get_all_entity_mids(fbpath):
     mids = set()

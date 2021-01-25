@@ -6,6 +6,9 @@ import pickle
 
 from util import www2fb, clean_uri
 
+'''
+{"subject": set(predicate_1, predicate_2,...)}
+'''
 
 def create_index_reachability(fbpath, outpath):
     print("creating the index map...")
